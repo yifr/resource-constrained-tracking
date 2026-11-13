@@ -1,5 +1,5 @@
 #=
-Render a stimulus JSON as a side-by-side mp4:
+Render a stimulus JSON as a side-by-side mp4 and gif (same basename):
   left  = ground truth, colored by group (with short trails and centroid marker)
   right = uncolored, unlabeled observations (what the tracker actually sees)
 
@@ -71,6 +71,14 @@ function animate_stimulus(json_path, mp4_path; trail = 15, marker_size = 16, spe
     return mp4_path
 end
 
+# Convert an already-rendered video to gif (one shared palette, so colors stay clean).
+# Gif frame delays are whole centiseconds, so the frame rate is capped at 50.
+function video_to_gif(video_path, gif_path; fps = 30)
+    filter = "fps=$(min(fps, 50)),split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=none"
+    run(`$(Makie.FFMPEG_jll.ffmpeg()) -loglevel error -y -i $video_path -filter_complex $filter -loop 0 $gif_path`)
+    return gif_path
+end
+
 function main(args = ARGS)
     pos = filter(a -> !startswith(a, "--"), args)
     isempty(pos) && error("usage: visualize.jl stimulus.json [out.mp4] [--trail=15] [--speed=2] [--res=1]")
@@ -82,8 +90,11 @@ function main(args = ARGS)
         (m = match(r"^--speed=([\d.]+)$", a)) !== nothing && (speed = parse(Float64, m[1]))
         (m = match(r"^--res=([\d.]+)$", a)) !== nothing && (res = parse(Float64, m[1]))
     end
+    gif_path = splitext(mp4_path)[1] * ".gif"
     animate_stimulus(json_path, mp4_path; trail = trail, speed = speed, res = res)
     println("wrote $mp4_path")
+    video_to_gif(mp4_path, gif_path; fps = load_stimulus(json_path).fps)
+    println("wrote $gif_path")
 end
 
 abspath(PROGRAM_FILE) == abspath(@__FILE__) && main()
